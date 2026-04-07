@@ -1,6 +1,8 @@
-
-## This is the repo for APHL Hackathon 2026 - all code, data, and visualizations are for demostration only and should not be used for anything other than hackathon demo purposes at this time.
 # APHL-Infectious-Disease/group1
+
+> **APHL-Infectious-Disease/group1**
+>
+> This repository contains a prototype pipeline developed for the 2026 APHL Hackathon by Group 1. All code, data products, and visualizations are for demonstration and development purposes only and should not be used for production, clinical, regulatory, or public health decision-making at this time.
 
 [![Open in GitHub Codespaces](https://img.shields.io/badge/Open_In_GitHub_Codespaces-black?labelColor=grey&logo=github)](https://github.com/codespaces/new/APHL-Infectious-Disease/group1)
 [![GitHub Actions CI Status](https://github.com/APHL-Infectious-Disease/group1/actions/workflows/nf-test.yml/badge.svg)](https://github.com/APHL-Infectious-Disease/group1/actions/workflows/nf-test.yml)
@@ -16,17 +18,34 @@
 
 ## Introduction
 
-**APHL-Infectious-Disease/group1** is a bioinformatics pipeline that ...
+**APHL-Infectious-Disease/group1** is a Nextflow-based bioinformatics pipeline being developed for the 2026 APHL Hackathon by Group 1. The current goal of the project is to re-screen publicly available **wastewater shotgun metagenomic sequencing data** for a targeted panel of **enteric viruses**, with an emphasis on pathogens of public health interest such as norovirus, sapovirus, astrovirus, adenovirus F, enteroviruses, and rotavirus A.
 
-<!-- TODO nf-core:
-   Complete this sentence with a 2-3 sentence summary of what types of data the pipeline ingests, a brief overview of the
-   major pipeline sections and the types of output it produces. You're giving an overview to someone new
-   to nf-core here, in 15-20 seconds. For an example, see https://github.com/nf-core/rnaseq/blob/master/README.md#introduction
--->
+The pipeline is intended to support a proof-of-concept workflow that can:
+- discover or accept selected public sequencing run accessions
+- retrieve raw sequencing reads from public repositories
+- screen reads against a curated viral reference panel
+- summarize candidate detections for downstream reporting and visualization
 
-<!-- TODO nf-core: Include a figure that guides the user through the major workflow steps. Many nf-core
-     workflows use the "tube map" design for that. See https://nf-co.re/docs/guidelines/graphic_design/workflow_diagrams#examples for examples.   -->
-<!-- TODO nf-core: Fill in short bullet-pointed list of the default steps in the pipeline -->
+This repository currently represents an **early prototype**, and pipeline structure, inputs, outputs, and analysis steps are still under active development.
+
+## Planned workflow
+
+The current planned workflow is:
+
+1. **Identify public datasets** matching project criteria, such as U.S. wastewater shotgun/WGS metagenomic runs
+2. **Retrieve sequencing reads** from public repositories such as SRA and/or ENA
+3. **Preprocess and quality-check reads**
+4. **Screen reads against a curated enteric virus reference set**
+5. **Summarize and export results** for downstream tables, dashboards, and visualization
+
+## Current project status
+
+This repository currently includes:
+- an `nf-core`-based Nextflow project scaffold
+- initial configuration and testing structure
+- a preliminary reference FASTA collection for the target virus panel
+- placeholder documentation that will continue to be updated as development progresses
+
 
 ## Usage
 
