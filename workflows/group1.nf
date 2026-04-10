@@ -49,10 +49,10 @@ workflow GROUP1 {
         ch_fastqdl
     )
     ch_fastq = FASTQDL.out.fastq
-
+    ch_kraken_db = Channel.fromPath('/workspaces/Group1/assets/kraken2db/')
     KRAKEN2_KRAKEN2(
         ch_fastq,
-        path(${projectDir}/assets/kraken2_db),
+        ch_kraken_db,
         false,
         true
     )
