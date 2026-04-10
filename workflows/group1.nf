@@ -12,6 +12,9 @@ include { FASTQDL } from '../modules/nf-core/fastqdl/main'
                                                             
 include {SRA_META} from '../modules/local/sra_meta_pull'
 include {ENTREZDIRECT_ESEARCH} from '../modules/nf-core/entrezdirect/esearch'
+
+                                                       
+ include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'   
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -45,7 +48,14 @@ workflow GROUP1 {
     FASTQDL(
         ch_fastqdl
     )
-    
+    ch_fastq = FASTQDL.out.fastq
+
+    KRAKEN2_KRAKEN2(
+        ch_fastq,
+        path(${projectDir}/assets/kraken2_db),
+        false,
+        true
+    )
    
 
     //
