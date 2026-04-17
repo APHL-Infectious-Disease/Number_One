@@ -1,66 +1,56 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS
+    IMPORT SUBWORKFLOWS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_group1_pipeline'
-
-// Retrieve metadata for SRA runs and get data
-include { FASTQDL } from '../modules/nf-core/fastqdl/main'                                                              
-                                                            
-include {SRA_META} from '../modules/local/sra_meta_pull'
-include {ENTREZDIRECT_ESEARCH} from '../modules/nf-core/entrezdirect/esearch'
-
-                                                       
- include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'   
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    RUN MAIN WORKFLOW
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
+include { SRA_DISCOVERY }          from '../subworkflows/local/sra_discovery'
+include { FETCH_READS }            from '../subworkflows/local/fetch_reads'
+include { PREPROCESS_READS }       from '../subworkflows/local/preprocess_reads'
+include { CLASSIFY_READS }         from '../subworkflows/local/classify_reads'
+include { BUILD_POSTKRAKEN_MATRIX } from '../subworkflows/local/build_postkraken_matrix'
+include { REPORTING }              from '../subworkflows/local/reporting'
 
 workflow GROUP1 {
 
     take:
-    ch_samplesheet // channel: samplesheet read in from --input
+    ch_samplesheet
+
     main:
-    
-    ch_versions = channel.empty()
+    ch_versions = Channel.empty()
 
-    ENTREZDIRECT_ESEARCH(
-        tuple('group1_esearch','"WGS[Strategy] AND USA AND Wastewater AND Metagenome"'
-        ),
-        "sra"
+    if (params.mode == 'sra') {
+        SRA_DISCOVERY()
+        ch_input = SRA_DISCOVERY.out.reads
+
+        FETCH_READS(
+            ch_input
+        )
+        ch_reads = FETCH_READS.out.reads
+
+    } else if (params.mode == 'samplesheet') {
+        ch_reads = ch_samplesheet
+
+    } else {
+        error "Unsupported params.mode: ${params.mode}. Use 'sra' or 'samplesheet'."
+    }
+
+    PREPROCESS_READS(
+        ch_reads
     )
 
-    SRA_META(
-        true
-    )
-    ch_versions = ch_versions.mix(SRA_META.out.versions_esearch)
-    // ch_meta = SRA_META.out.tsv
-    // ch_xml = SRA_META.out.xml
-    
-    
-    ch_fastqdl = tuple([meta: 'SRX26273713', id: 'SRX26273713'],'SRX26273713') // example SRA run ID, replace with actual IDs as needed
-    
-    FASTQDL(
-        ch_fastqdl
-    )
-    ch_fastq = FASTQDL.out.fastq
-    ch_kraken_db = Channel.fromPath('/workspaces/Group1/assets/kraken2db/')
-    KRAKEN2_KRAKEN2(
-        ch_fastq,
-        ch_kraken_db,
-        false,
-        true
-    )
-   
+    ch_kraken2_db = Channel.fromPath(params.kraken2_db, checkIfExists: true)
 
-    //
-    // Collate and save software versions
-    //
+    CLASSIFY_READS(
+        PREPROCESS_READS.out.reads,
+        ch_kraken2_db
+    )
+
+    BUILD_POSTKRAKEN_MATRIX(
+        params.mode == 'sra' ? SRA_DISCOVERY.out.tsv : Channel.empty(),
+        CLASSIFY_READS.out.kraken2_report
+    )
+
     def topic_versions = Channel.topic("versions")
         .distinct()
         .branch { entry ->
@@ -78,23 +68,32 @@ workflow GROUP1 {
             "${process}:\n${tool_versions.join('\n')}"
         }
 
-    softwareVersionsToYAML(ch_versions.mix(topic_versions.versions_file))
+    softwareVersionsToYAML(topic_versions.versions_file)
         .mix(topic_versions_string)
         .collectFile(
             storeDir: "${params.outdir}/pipeline_info",
-            name:  'group1_software_'  + 'versions.yml',
+            name: 'group1_software_versions.yml',
             sort: true,
             newLine: true
-        ).set { ch_collated_versions }
+        )
+        .set { ch_collated_versions }
 
+    ch_multiqc_files = Channel.empty()
+        .mix(PREPROCESS_READS.out.fastqc_raw)
+        .mix(PREPROCESS_READS.out.fastqc_trimmed)
+        .mix(PREPROCESS_READS.out.fastp_json)
+        .mix(PREPROCESS_READS.out.seqkit_stats)
+        .mix(CLASSIFY_READS.out.kraken2_report)
+
+    REPORTING(
+        ch_multiqc_files,
+        ch_collated_versions
+    )
 
     emit:
-    versions       = ch_versions                 // channel: [ path(versions.yml) ]
-    // meta = ch_meta
+    reads                = PREPROCESS_READS.out.reads
+    kraken2_report       = CLASSIFY_READS.out.kraken2_report
+    metadata_postkraken  = BUILD_POSTKRAKEN_MATRIX.out.matrix
+    multiqc_report       = REPORTING.out.report
+    versions             = ch_versions
 }
-
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    THE END
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/

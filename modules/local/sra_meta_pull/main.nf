@@ -2,7 +2,7 @@ process SRA_META {
     tag "Gathering SRA Runs"
     label 'process_single'
 
-    errorStrategy 'ignore'
+    errorStrategy 'terminate'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -10,27 +10,19 @@ process SRA_META {
         'biocontainers/entrez-direct:16.2--he881be0_1' }"
 
     input:
-    val run
+    tuple val(meta), path(xml)
 
     output:
-    path("*.xml") , emit: xml
-    path("*.tsv") , emit: tsv
+    path("*.xml"), emit: xml
+    path("*.tsv"), emit: tsv
     tuple val("${task.process}"), val('ENTREZDIRECT'), eval('esearch -version 2>&1'), emit: versions_esearch, topic: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
-    def args = task.ext.args ?: ''
     """
-
-    bash /workspaces/Group1/modules/local/sra_meta_pull/sra_meta_pull.sh
-
-    """
-
-    stub:
-    """
-    touch sra.xml
-
+    cp ${xml} input.xml
+    bash ${moduleDir}/sra_meta_pull.sh input.xml
     """
 }
