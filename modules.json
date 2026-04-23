@@ -19,6 +19,11 @@
                         "branch": "master",
                         "git_sha": "71a39f3598935d64ffd65f0960e4d2d4a42ab778",
                         "installed_by": ["modules"]
+                    },
+                    "rmarkdownnotebook": {
+                        "branch": "master",
+                        "git_sha": "6d46786420b4d7bc88eba026eb389c0c5535d120",
+                        "installed_by": ["modules"]
                     }
                 }
             },
