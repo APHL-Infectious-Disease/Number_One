@@ -15,6 +15,8 @@ ui <- fluidPage(
     # Application title
     titlePanel("Old Faithful Geyser Data"),
 
+    #UI input - sliders (date), button, arranging. - V 
+
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
@@ -45,6 +47,21 @@ server <- function(input, output) {
              xlab = 'Waiting time to next eruption (in mins)',
              main = 'Histogram of waiting times')
     })
+
+#import data and transform - Script from Hanley
+# tabulated data - data table on a tab
+# ggplot - taxon breakdown by state AND National, and frequency
+# ggplot - time bound
+#
+
+
+
+
+# mapping - Leaflet map. V 
+# state shading? organism
+
+
+
 }
 
 # Run the application 
