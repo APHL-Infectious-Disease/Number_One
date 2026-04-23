@@ -30,7 +30,7 @@ workflow GROUP1 {
     ch_versions = channel.empty()
 
     SRA_META(
-         tuple('group1_esearch','"WGS[Strategy] AND USA AND Wastewater AND Metagenome"'
+         tuple('group1_esearch','"WGS[Strategy] AND USA AND Wastewater AND Metagenome NOT amplicon"'
         ),
         "sra"
     )
@@ -61,7 +61,7 @@ workflow GROUP1 {
         ch_fastq,
         ch_kraken_db,
         false,
-        true
+        false
     )
    
 
