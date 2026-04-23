@@ -152,5 +152,55 @@
         {
             "$ref": "#/$defs/generic_options"
         }
-    ]
+    ],
+    "properties": {
+        "mode": {
+            "type": "string",
+            "default": "sra"
+        },
+        "sra_query": {
+            "type": "string",
+            "default": "((txid527639[Organism] OR wastewater OR sewage) AND (virome OR viral OR metagenomic) AND (WGS[Strategy] OR AMPLICON[Strategy])) AND (2026/04/13:2026/04/20[PDAT])"
+        },
+        "max_runs": {
+            "type": "integer",
+            "default": 15
+        },
+        "accessions": {
+            "type": "string"
+        },
+        "subsample_reads": {
+            "type": "boolean"
+        },
+        "subsample_size": {
+            "type": "integer",
+            "default": 1000000
+        },
+        "run_preprocessing": {
+            "type": "boolean"
+        },
+        "run_multiqc": {
+            "type": "boolean"
+        },
+        "run_kraken2": {
+            "type": "boolean",
+            "default": true
+        },
+        "save_output_fastqs": {
+            "type": "boolean"
+        },
+        "save_reads_assignment": {
+            "type": "boolean"
+        },
+        "kraken2_db": {
+            "type": "string"
+        },
+        "kraken2_db_url": {
+            "type": "string"
+        },
+        "pathogens_of_interest": {
+            "type": "string",
+            "default": "Norovirus,Rotavirus,Parvovirus,Enterovirus,Astrovirus,Poliovirus,Sapovirus,Adenovirus,Morbillivirus,Unclassified"
+        }
+    }
 }
