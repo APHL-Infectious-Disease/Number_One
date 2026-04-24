@@ -93,11 +93,43 @@ workflow GROUP1 {
             ch_reads
         )
 
-        ch_reads_for_kraken = PREPROCESS_READS.out.reads
+        ch_reads_for_kraken_raw = PREPROCESS_READS.out.reads
 
     } else {
-        ch_reads_for_kraken = ch_reads
+        ch_reads_for_kraken_raw = ch_reads
     }
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        FILTER MALFORMED READ SETS BEFORE KRAKEN2
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        Kraken2 paired mode requires an even number of FASTQ files.
+        Some public accessions can produce odd/mixed outputs, e.g.
+        sample.fastq.gz + sample_1.fastq.gz + sample_2.fastq.gz.
+        Those samples are skipped so the pipeline can continue.
+    */
+    ch_reads_for_kraken = ch_reads_for_kraken_raw
+        .filter { meta, reads ->
+
+            def read_files = reads instanceof List ? reads : [reads]
+            def n_reads = read_files.size()
+            def single_end = meta.single_end as boolean
+
+            if (single_end) {
+                if (n_reads < 1) {
+                    log.warn "Skipping ${meta.id}: single-end sample has no FASTQ files"
+                    return false
+                }
+                return true
+            }
+
+            if (!single_end && n_reads != 2) {
+                log.warn "Skipping ${meta.id}: expected exactly 2 paired-end FASTQ files but found ${n_reads}: ${read_files}"
+                return false
+            }
+
+            return true
+        }
 
     /*
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -118,6 +118,14 @@ def enrich_runinfo(
         df = df[df["download_path"].astype(str).str.strip() != ""].copy()
         print(f"INFO: download_path filter retained {len(df)} of {before} SRR rows", file=sys.stderr)
 
+    # Keep only paired-end runs.
+    if "LibraryLayout" in df.columns:
+        before = len(df)
+        df = df[df["LibraryLayout"].astype(str).str.upper().str.strip() == "PAIRED"].copy()
+        print(f"INFO: paired-end filter retained {len(df)} of {before} rows", file=sys.stderr)
+    else:
+        raise ValueError("RunInfo CSV does not contain LibraryLayout column; cannot filter for paired-end runs.")
+
     # Filter by SRA size before BioSample enrichment/download.
     # RunInfo commonly has a size_MB column.
     if max_sra_mb and max_sra_mb > 0:
@@ -145,7 +153,7 @@ def enrich_runinfo(
     if df.empty:
         raise ValueError(
             "No candidate SRR accessions remained after initial filters. "
-            "Try increasing --max_sra_mb, increasing --sra_candidate_limit, or broadening --sra_query."
+            "Try increasing --max_sra_mb, increasing --sra_candidate_limit, or broadening --sra_query, or allowing single-end runs."
         )
 
     if "BioSample" not in df.columns:
