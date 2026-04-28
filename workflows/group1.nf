@@ -1,73 +1,170 @@
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS
+    IMPORT SUBWORKFLOWS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-include { paramsSummaryMap       } from 'plugin/nf-schema'
-include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_group1_pipeline'
+include { softwareVersionsToYAML }   from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { SRA_DISCOVERY }            from '../subworkflows/local/sra_discovery'
+include { FETCH_READS }              from '../subworkflows/local/fetch_reads'
+include { PREPROCESS_READS }         from '../subworkflows/local/preprocess_reads'
+include { CLASSIFY_READS }           from '../subworkflows/local/classify_reads'
+include { BUILD_POSTKRAKEN_MATRIX }  from '../subworkflows/local/build_postkraken_matrix'
+include { REPORTING }                from '../subworkflows/local/reporting'
+include { PREPARE_KRAKEN_DB }        from '../subworkflows/local/prepare_kraken_db'
 
-// Retrieve metadata for SRA runs and get data
-include { FASTQDL } from '../modules/nf-core/fastqdl/main'                                                              
-                                                            
-include {SRA_META} from '../modules/local/sra_meta_pull'
-include {ENTREZDIRECT_ESEARCH} from '../modules/nf-core/entrezdirect/esearch'
-
-                                                       
- include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'   
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    RUN MAIN WORKFLOW
+    IMPORT MODULES
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
+include { MAKE_ACCESSIONS_METADATA } from '../modules/local/make_accessions_metadata/main'
 
 workflow GROUP1 {
 
     take:
-    ch_samplesheet // channel: samplesheet read in from --input
+    ch_samplesheet
+
     main:
-    
-    ch_versions = channel.empty()
+    ch_versions = Channel.empty()
 
-    SRA_META(
-         tuple('group1_esearch','"WGS[Strategy] AND USA AND Wastewater AND Metagenome"'
-        ),
-        "sra"
-    )
-    // ch_versions = ch_versions.mix(SRA_META.out.versions_esearch)
-    // ch_meta = SRA_META.out.tsv
-    // ch_xml = SRA_META.out.xml
-    
-    // Read TSV and convert to a channel from sra_meta_top3.tsv, which contains the top 3 SRA run IDs
-    
-    tsvChannel = SRA_META.out.sra_meta_top
-    .flatMap { file ->
-        file.readLines().collect { line ->
-            def cols = line.split('\t')
-            cols        }
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        INPUT SELECTION
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    if (params.mode == 'sra') {
+        SRA_DISCOVERY()
+
+        FETCH_READS(
+            SRA_DISCOVERY.out.reads
+        )
+
+        ch_reads = FETCH_READS.out.reads
+        ch_metadata_for_matrix = SRA_DISCOVERY.out.tsv
+
+    } else if (params.mode == 'accessions') {
+
+        if (!params.accessions) {
+            error "When --mode accessions, you must provide --accessions <file>"
+        }
+
+        ch_accessions_file = Channel.fromPath(params.accessions, checkIfExists: true)
+
+        ch_input = ch_accessions_file
+            .splitText()
+            .map { it.trim() }
+            .filter { it && !it.startsWith('#') }
+            .map { accession ->
+                def meta = [
+                    id         : accession,
+                    sample     : accession,
+                    single_end : false
+                ]
+                tuple(meta, accession)
+            }
+
+        FETCH_READS(
+            ch_input
+        )
+
+        ch_reads = FETCH_READS.out.reads
+
+        MAKE_ACCESSIONS_METADATA(
+            ch_accessions_file
+        )
+
+        ch_metadata_for_matrix = MAKE_ACCESSIONS_METADATA.out.csv
+
+    } else if (params.mode == 'samplesheet') {
+        ch_reads = ch_samplesheet
+        ch_metadata_for_matrix = Channel.empty()
+
+    } else {
+        error "Unsupported params.mode: ${params.mode}. Use 'sra', 'accessions', or 'samplesheet'."
     }
-     ch_fastqdl = tuple([meta: 'SRX26273713', id: 'SRX26273713'],'SRX26273713') // example SRA run ID
-    
-  
-    FASTQDL(
-        tsvChannel.map { cols -> tuple([meta: cols[0], id: cols[0]], cols[0]) }, // meta and id are the same in this case
-    )
-    ch_fastq = FASTQDL.out.fastq
-    ch_kraken_db = Channel.fromPath('/workspaces/Group1/assets/kraken2db_v2/')
-    .collect()
 
-  
-    KRAKEN2_KRAKEN2(
-        ch_fastq,
-        ch_kraken_db,
-        false,
-        true
-    )
-   
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        OPTIONAL PREPROCESSING
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    if (params.run_preprocessing) {
+        PREPROCESS_READS(
+            ch_reads
+        )
 
-    //
-    // Collate and save software versions
-    //
+        ch_reads_for_kraken_raw = PREPROCESS_READS.out.reads
+
+    } else {
+        ch_reads_for_kraken_raw = ch_reads
+    }
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        FILTER MALFORMED READ SETS BEFORE KRAKEN2
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        Kraken2 paired mode requires an even number of FASTQ files.
+        Some public accessions can produce odd/mixed outputs, e.g.
+        sample.fastq.gz + sample_1.fastq.gz + sample_2.fastq.gz.
+        Those samples are skipped so the pipeline can continue.
+    */
+    ch_reads_for_kraken = ch_reads_for_kraken_raw
+        .filter { meta, reads ->
+
+            def read_files = reads instanceof List ? reads : [reads]
+            def n_reads = read_files.size()
+            def single_end = meta.single_end as boolean
+
+            if (single_end) {
+                if (n_reads < 1) {
+                    log.warn "Skipping ${meta.id}: single-end sample has no FASTQ files"
+                    return false
+                }
+                return true
+            }
+
+            if (!single_end && n_reads != 2) {
+                log.warn "Skipping ${meta.id}: expected exactly 2 paired-end FASTQ files but found ${n_reads}: ${read_files}"
+                return false
+            }
+
+            return true
+        }
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        PREPARE KRAKEN2 DB
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    PREPARE_KRAKEN_DB()
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        CLASSIFICATION
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    CLASSIFY_READS(
+        ch_reads_for_kraken,
+        PREPARE_KRAKEN_DB.out.db
+    )
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        POST-KRAKEN MATRIX
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    if (params.mode == 'sra' || params.mode == 'accessions') {
+        BUILD_POSTKRAKEN_MATRIX(
+            ch_metadata_for_matrix,
+            CLASSIFY_READS.out.kraken2_report
+        )
+    }
+
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        SOFTWARE VERSIONS
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
     def topic_versions = Channel.topic("versions")
         .distinct()
         .branch { entry ->
@@ -77,31 +174,55 @@ workflow GROUP1 {
 
     def topic_versions_string = topic_versions.versions_tuple
         .map { process, tool, version ->
-            [ process[process.lastIndexOf(':')+1..-1], "  ${tool}: ${version}" ]
+            [ process[process.lastIndexOf(':') + 1..-1], "  ${tool}: ${version}" ]
         }
-        .groupTuple(by:0)
+        .groupTuple(by: 0)
         .map { process, tool_versions ->
             tool_versions.unique().sort()
             "${process}:\n${tool_versions.join('\n')}"
         }
 
-    softwareVersionsToYAML(ch_versions.mix(topic_versions.versions_file))
+    softwareVersionsToYAML(topic_versions.versions_file)
         .mix(topic_versions_string)
         .collectFile(
             storeDir: "${params.outdir}/pipeline_info",
-            name:  'group1_software_'  + 'versions.yml',
+            name: 'group1_software_versions.yml',
             sort: true,
             newLine: true
-        ).set { ch_collated_versions }
+        )
+        .set { ch_collated_versions }
 
+    /*
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        REPORTING / MULTIQC
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    */
+    if (params.run_multiqc) {
+
+        ch_multiqc_files = Channel.empty()
+
+        if (params.run_preprocessing) {
+            ch_multiqc_files = ch_multiqc_files
+                .mix(PREPROCESS_READS.out.fastqc_raw)
+                .mix(PREPROCESS_READS.out.fastqc_trimmed)
+                .mix(PREPROCESS_READS.out.fastp_json)
+                .mix(PREPROCESS_READS.out.seqkit_stats)
+        }
+
+        ch_multiqc_files = ch_multiqc_files
+            .mix(CLASSIFY_READS.out.kraken2_report)
+
+        REPORTING(
+            ch_multiqc_files,
+            ch_collated_versions
+        )
+    }
 
     emit:
-    versions       = ch_versions                 // channel: [ path(versions.yml) ]
-    // meta = ch_meta
+    reads                         = ch_reads_for_kraken
+    kraken2_report                = CLASSIFY_READS.out.kraken2_report
+    metadata_postkraken           = (params.mode == 'sra' || params.mode == 'accessions') ? BUILD_POSTKRAKEN_MATRIX.out.matrix : Channel.empty()
+    metadata_postkraken_hits_only = (params.mode == 'sra' || params.mode == 'accessions') ? BUILD_POSTKRAKEN_MATRIX.out.hits_only : Channel.empty()
+    multiqc_report                = params.run_multiqc ? REPORTING.out.report : Channel.empty()
+    versions                      = ch_versions
 }
-
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    THE END
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/

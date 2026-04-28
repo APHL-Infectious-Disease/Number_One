@@ -10,7 +10,7 @@
             "type": "object",
             "fa_icon": "fas fa-terminal",
             "description": "Define where the pipeline should find input data and save output data.",
-            "required": ["input", "outdir"],
+            "required": ["outdir"],
             "properties": {
                 "input": {
                     "type": "string",
@@ -18,7 +18,7 @@
                     "exists": true,
                     "schema": "assets/schema_input.json",
                     "mimetype": "text/csv",
-                    "pattern": "^\\S+\\.csv$",
+                    "pattern": "^\\S+\\.(csv|tsv|txt)$",
                     "description": "Path to comma-separated file containing information about the samples in the experiment.",
                     "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 3 columns, and a header row.",
                     "fa_icon": "fas fa-file-csv"
@@ -152,5 +152,63 @@
         {
             "$ref": "#/$defs/generic_options"
         }
-    ]
+    ],
+    "properties": {
+        "mode": {
+            "type": "string",
+            "default": "sra"
+        },
+        "sra_query": {
+            "type": "string",
+            "default": "(((txid527639[Organism] OR wastewater OR sewage OR influent OR effluent OR WWTP) AND (virome OR viral OR metagenomic OR metagenome) AND WGS[Strategy]) NOT (AMPLICON[Strategy] OR ARTIC OR \"targeted\" OR \"environmental\" OR \"unknown\"))"
+        },
+        "max_runs": {
+            "type": "integer",
+            "default": 15
+        },
+        "accessions": {
+            "type": "string"
+        },
+        "subsample_reads": {
+            "type": "boolean"
+        },
+        "subsample_size": {
+            "type": "integer",
+            "default": 1000000
+        },
+        "run_preprocessing": {
+            "type": "boolean"
+        },
+        "run_multiqc": {
+            "type": "boolean"
+        },
+        "run_kraken2": {
+            "type": "boolean",
+            "default": true
+        },
+        "save_output_fastqs": {
+            "type": "boolean"
+        },
+        "save_reads_assignment": {
+            "type": "boolean"
+        },
+        "kraken2_db": {
+            "type": "string"
+        },
+        "kraken2_db_url": {
+            "type": "string"
+        },
+        "pathogens_of_interest": {
+            "type": "string",
+            "default": "Norovirus,Rotavirus,Parvovirus,Enterovirus,Astrovirus,Poliovirus,Sapovirus,Adenovirus,Morbillivirus,Unclassified"
+        },
+        "sra_candidate_limit": {
+            "type": "integer",
+            "default": 1000
+        },
+        "max_sra_mb": {
+            "type": "integer",
+            "default": 500
+        }
+    }
 }
