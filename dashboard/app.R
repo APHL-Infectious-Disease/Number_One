@@ -22,9 +22,15 @@ ui <- fluidPage(
   # Sidebar with a slider input for number of bins 
   sidebarLayout(
     sidebarPanel(
+      selectInput("y_var",
+                  "Y:",
+                  choices = c("count", "percent")),
+      selectInput("x_var",
+                  "Group By:",
+                  choices = c("scientific_name", "sample_srx", "year")),
       selectInput("fill_var",
                   "Color By:",
-                  choices = c("scientific_name", "sample_srx", "year"))
+                  choices = c("scientific_name", "sample_srx", "year")),
     ),
     
     # Show a plot of the generated distribution
@@ -42,30 +48,22 @@ server <- function(input, output) {
   
   output$barPlot <- renderPlot({
     
-    # Parse input values (to deal with non-standard ggplot aes nomenclature)
-    #color_by <- input$color_by
-    
-    # generate bins based on input$bins from ui.R
-    #bins <- seq(min(x), max(x), length.out = input$bins + 1)
-    
     # draw the histogram with the specified number of bins
     kraken_summary %>%
       # Drop unclassified from results
       mutate(year = year(as.Date(summary_date))) %>% #using summary date just to test, but this needs to be changed to the collection date from the metadata
       filter(scientific_name != "unclassified") %>%
       ggplot() +
-      geom_bar(aes_string(x = "sample_srx", y="count", fill = input$fill_var), stat = "identity") +
+      geom_bar(aes_string(x = input$x_var, y=input$y_var, fill = input$fill_var), stat = "identity") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-      labs(
-        y = "read count"
-      )
+      labs( )
   })
   
   #import data and transform - Script from Hanley
   # tabulated data - data table on a tab
   # ggplot - taxon breakdown by state AND National, and frequency
   # ggplot - time bound
-  #
+  # need to add metadata - IMPORTANT - year is currently the year summary was made - needs to be changed to collection year from metadata
   
   
   
