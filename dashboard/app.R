@@ -15,7 +15,6 @@ library(readr)
 library(bslib)
 library(leaflet)
 library(DT)
-
 thematic::thematic_shiny(font = "auto")
 # setup fonts
 
@@ -31,96 +30,112 @@ ui <- fluidPage(
 
   #UI input - sliders (date), button, arranging. - V 
   
-  # Sidebar with a slider input for number of bins 
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("y_var",
-                  "Y:",
-                  choices = c("count", "percent")),
-      selectInput("x_var",
-                  "Group By:",
-                  choices = c("scientific_name", "sample_srx", "year")),
-      selectInput("fill_var",
-                  "Color By:",
-                  choices = c("scientific_name", "sample_srx", "year"))
-    ),
+  tabsetPanel(
     
-    # Show a plot of the generated distribution
-    mainPanel(
-      tabsetPanel(
-        tabPanel("Bar Plot", plotOutput("barPlot")),
-        tabPanel("Organism Frequency", plotOutput("org_freq")),
-        tabPanel("Organism Percent", plotOutput("org_percent")),
-        tabPanel("Organism Location", plotOutput("org_locale")),
-        tabPanel("Map", leafletOutput("map")),
-        tabPanel("Data", dataTableOutput("data"))
-      )))
+    # barplot tab
+    tabPanel("Bar Plot",
+    # Set up sidebar
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("y_var",
+                    "Summarize Average Read:",
+                    choices = c("count", "percent")),
+        selectInput("x_var",
+                    "Group By:",
+                    choices = c("scientific_name", "sample_srx")),
+        selectInput("fill_var",
+                    "Color By:",
+                    choices = c("scientific_name", "sample_srx", "location", "year", "library_selection"))
+                    ),
+        mainPanel(plotOutput("barPlot"))
+    )),
     
+    # Timeplot
+    tabPanel("Time Plot",
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("y_var2",
+                    "Summarize Average Read:",
+                    choices = c("count", "percent"))
+      ),
+      mainPanel(plotOutput("timePlot"))
+    )),
+
+    # Additional tabs
+    tabPanel("Organism Frequency", plotOutput("org_freq")),
+    tabPanel("Organism Percent", plotOutput("org_percent")),
+    tabPanel("Organism Location", plotOutput("org_locale")),
+    tabPanel("Map", leafletOutput("map")),
+    tabPanel("Data", dataTableOutput("data"))
+
+    )
 )
 
-# Define server logic required to draw a histogram
+# Define server logic
 server <- function(input, output) {
   #themer
   bs_themer()
 
 
-  # Load data - pull most recent file
-  most_recent_kraken <- read.csv("/workspaces/Group1/results/postkraken/metadata_postkraken.csv")
-  bugs <- c("Norovirus","Rotavirus","Parvovirus",
-            "Enterovirus","Astrovirus","Poliovirus",
-            "Sapovirus","Adenovirus","Morbillivirus",
-            "Unclassified")
-
-#pivoting data for long form
-kraken_long <- most_recent_kraken %>%
-  pivot_longer(
-    cols = c(Norovirus:Unclassified_detected),  
-    names_to = c("organism", ".value"),         
-    names_pattern = "^(.*)_(pct|detected)$",    
-    values_drop_na = TRUE                       
-  ) %>%
-  rename(percent = pct) %>%                     
-  select(SRA.accession, organism, percent, detected, everything())
-
-#write temp kraken file and append to history file
-write.csv(kraken_long,"../dashboard/current_session_kraken.csv")
-history <- read.csv("../dashboard/kraken_history.csv")
-
-history %>%
-  full_join(kraken_long) %>%
-  unique.array()
-
-write.csv(history,"../dashboard/kraken_history.csv")
-
-#TODO: get kraken_long to contain counts so it can be assigned to the kraken_summary variable. 
+  # Load data
+  
+  ### Kraken summary file based on most recent date in file name
+  most_recent_kraken <- list.files("../results/summary/", full.names = TRUE) %>% 
+  sort(decreasing = TRUE) %>% 
+  first()
+  
   kraken_summary <- read.csv("../results/summary/kraken_summary-2026-04-28.csv")
   
+  ### Metadata from SRA data pull
   ww_metadata <- read.csv("../results/sra/sra_meta.tsv", sep = "\t")
   colnames(ww_metadata) <- c("sample_srx","library_strategy","library_selection","run_taxon_id","run_scientific_name", "collection_date", "location", "lat_lon")
 
+  ### Combine Kraken & metadata
   summary_data <- kraken_summary %>%
-    left_join(ww_metadata, by = c("sample_srx" = "sample_srx")) %>%
-    mutate(country = str_extract(location, "^[^:]+")) %>%
-    mutate(place = str_extract(location, "(?<=:).*"))  
+    left_join(ww_metadata, by = "sample_srx") %>%
+    mutate(
+      country = str_extract(location, "^[^:]+"),
+      place = str_extract(location, "(?<=:).*"),
+      collection_date = as.Date(collection_date, format = "%Y-%m-%d"),
+      year = as.character(year(as.Date(collection_date)))
+    )
   
+
+  # Generate barplot
   output$barPlot <- renderPlot({
     
-    # draw the histogram with the specified number of bins
-    kraken_summary %>%
+    summary_data %>%
       # Drop unclassified from results
-      mutate(year = year(as.Date(summary_date))) %>% #using summary date just to test, but this needs to be changed to the collection date from the metadata
       filter(scientific_name != "unclassified") %>%
       ggplot() +
-      geom_bar(aes_string(x = input$x_var, y=input$y_var, fill = input$fill_var), stat = "identity") +
+      stat_summary(fun = mean, geom = "col", position = "dodge",
+      aes_string(x = input$x_var, y = input$y_var, fill = input$fill_var)) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
       labs( )
   })
   
+
+
+# Time trends
+  output$timePlot <- renderPlot({
+
+    summary_data %>%
+      # Drop unclassified from results
+      filter(scientific_name != "unclassified") %>%
+      ggplot(aes_string(x = "collection_date", y = input$y_var2, color = "location")) + 
+      geom_point() +
+      geom_line() +
+      facet_wrap(~scientific_name, ncol = 2) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      labs( )
+  })
+
+
   #import data and transform - Script from Hanley
   # tabulated data - data table on a tab
   # ggplot - taxon breakdown by state AND National, and frequency
   # ggplot - time bound
-  # need to add metadata - IMPORTANT - year is currently the year summary was made - needs to be changed to collection year from metadata
+
 summaryfile <- summary_data 
 ##initial file read in - no metadata attached
 
@@ -183,10 +198,8 @@ output$map <- renderLeaflet({
       fillOpacity = 0.4, 
       radius = ~count.y * 15, group = ~scientific_name, clusterOptions = markerClusterOptions())
        })
-  
-  output$data <- 
-    renderDataTable({datatable(summary_data)}) 
-
+output$data <- 
+  renderDataTable({datatable(summary_data)})   
   
 }
 
