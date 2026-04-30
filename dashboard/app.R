@@ -34,14 +34,22 @@ ui <- fluidPage(
   
   tabsetPanel(
     
+    # primary tab
+    tabPanel("Main",
+      fluidRow(
+        column(width = 6, plotOutput("org_freq")),
+        column(width = 6, plotOutput("org_percent")),
+        column(width = 6, plotOutput("org_locale"))
+    )),
+
     # barplot tab
-    tabPanel("Bar Plot",
+    tabPanel("Barplot",
     # Set up sidebar
     sidebarLayout(
       sidebarPanel(
         selectInput("y_var",
                     "Summarize Average Read:",
-                    choices = c("count", "percent")),
+                    choices = c("count", "percentage_in_sample")),
         selectInput("x_var",
                     "Group By:",
                     choices = c("scientific_name", "sample_srx")),
@@ -52,21 +60,7 @@ ui <- fluidPage(
         mainPanel(plotOutput("barPlot"))
     )),
     
-    # Timeplot
-    tabPanel("Time Plot",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("y_var2",
-                    "Summarize Average Read:",
-                    choices = c("count", "percent"))
-      ),
-      mainPanel(plotOutput("timePlot"))
-    )),
-
     # Additional tabs
-    tabPanel("Organism Frequency", plotOutput("org_freq")),
-    tabPanel("Organism Percent", plotOutput("org_percent")),
-    tabPanel("Organism Location", plotOutput("org_locale")),
     tabPanel("Map", leafletOutput("map")),
     tabPanel("Data", dataTableOutput("data"))
 
@@ -110,6 +104,10 @@ server <- function(input, output) {
   output$barPlot <- renderPlot({
     
     summary_data %>%
+      # Rename variables
+      mutate(
+        `percentage_in_sample` = percent
+      ) %>%
       # Drop unclassified from results
       filter(scientific_name != "unclassified") %>%
       ggplot() +
@@ -119,21 +117,6 @@ server <- function(input, output) {
       labs( )
   })
   
-
-
-# Time trends
-  output$timePlot <- renderPlot({
-
-    summary_data %>%
-      # Drop unclassified from results
-      filter(scientific_name != "unclassified") %>%
-      ggplot(aes_string(x = "collection_date", y = input$y_var2, color = "location")) + 
-      geom_point() +
-      geom_line() +
-      facet_wrap(~scientific_name, ncol = 2) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-      labs( )
-  })
 
 
   #import data and transform - Script from Hanley
@@ -147,25 +130,28 @@ summaryfile <- summary_data
 summary_oi <- summaryfile[summaryfile$scientific_name != "unclassified", ] ##subset to exclude unclassified
 
 output$org_freq <- renderPlot({
-  ggplot(summary_oi, aes(y=scientific_name, fill=scientific_name )) + 
-  geom_bar( ) +
-  scale_fill_hue(c = 40) +
-  theme(legend.position="none") + labs(title = "Count of organisms found in wastewater", x="Number of organisms", y="Organism")  
+  ggplot(summary_oi, aes(x=count, y=scientific_name, fill=scientific_name)) + 
+  geom_boxplot( ) +
+  geom_boxplot(color = "salmon") +
+  scale_fill_hue(c = 40) + 
+  theme(legend.position="none") +
+  labs(title = "Count of organisms found in wastewater", x="Number of organisms (reads)", y="Organism")  
   ##bar chart to number organisms by scientific name
 })
 output$org_percent <- renderPlot({
-  ggplot(summary_oi, aes(x=percent, y=scientific_name)) +
-  geom_line( color= "salmon", linetype=1, size = 5) +
-  labs(title="Percentage of Organisms in Wastewater", x="Percentage") 
+  ggplot(summary_oi, aes(x=percent, y=scientific_name, fill=scientific_name)) +
+  geom_boxplot(color = "salmon") +
+  scale_fill_hue(c = 40) +
+  labs(title="Percentage of Organisms in Wastewater", x="Percentage in sample") 
   ##bar chart for percent of organisms by scientific name (without unclassified)
 })
 output$org_locale <- renderPlot({
-  ggplot(summary_oi, aes(x = location)) +
+  ggplot(summary_oi %>% mutate(location = ifelse(location == "", "unknown", location)), aes(x = location)) +
   geom_bar(fill = "salmon") +
   labs(title = "Organisms by Location", y = "Number of Organisms") 
    ##bar chart by location - should work if column name in Toms sheet is location lol
 })
-  
+
   
   
   # mapping - Leaflet map. V 
