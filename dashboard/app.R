@@ -2,10 +2,9 @@
 # This is a Shiny web application. You can run the application by clicking
 # the 'Run App' button above.
 #
-# Find out more about building applications with Shiny here:
-#
-#    https://shiny.posit.co/
-#
+# Before running this script for the frist time, it may be necissary to run in the terminal:
+# conda install -c conda-forge r-base
+# conda install -c conda-forge r-tidyverse r-shiny r-leaflet r-thematic r-DT
 
 library(shiny)
 library(htmltools)
@@ -15,6 +14,7 @@ library(readr)
 library(bslib)
 library(leaflet)
 library(DT)
+library(scales)
 
 
 thematic::thematic_shiny(font = "auto")
@@ -72,7 +72,8 @@ ui <- fluidPage(
         h3("Enteric Viruses in Metagenomic Wastewater Samples", align = "center"),
         column(width = 6, plotOutput("org_freq")),
         column(width = 6, plotOutput("org_percent")),
-        column(width = 6, plotOutput("org_locale"))
+        column(width = 6, plotOutput("org_locale")),
+        column(width = 6, plotOutput("unique_viruses"))
     )),
 
     # barplot tab
@@ -124,16 +125,7 @@ server <- function(input, output) {
   })
   
 
-
-  #import data and transform - Script from Hanley
-  # tabulated data - data table on a tab
-  # ggplot - taxon breakdown by state AND National, and frequency
-  # ggplot - time bound
-
-summaryfile <- summary_data 
-##initial file read in - no metadata attached
-
-summary_oi <- summaryfile[summaryfile$scientific_name != "unclassified", ] ##subset to exclude unclassified
+summary_oi <- summary_data[summary_data$scientific_name != "unclassified", ] ##subset to exclude unclassified
 
 output$org_freq <- renderPlot({
   ggplot(summary_oi, aes(x=count, y=scientific_name, fill=scientific_name)) + 
@@ -148,14 +140,27 @@ output$org_percent <- renderPlot({
   ggplot(summary_oi, aes(x=percent, y=scientific_name, fill=scientific_name)) +
   geom_boxplot(color = "salmon") +
   scale_fill_hue(c = 40) +
-  labs(title="Percentage of Organisms in Wastewater", x="Percentage in sample") 
+  scale_x_continuous(labels = label_number()) +
+  theme(legend.position="none") +
+  labs(title="Percentage of Organisms in Wastewater (axis is not to 100!)", x="Percentage in sample") 
   ##bar chart for percent of organisms by scientific name (without unclassified)
 })
 output$org_locale <- renderPlot({
   ggplot(summary_oi %>% mutate(location = ifelse(location == "", "unknown", location)), aes(x = location)) +
   geom_bar(fill = "salmon") +
-  labs(title = "Organisms by Location", y = "Number of Organisms") 
-   ##bar chart by location - should work if column name in Toms sheet is location lol
+  labs(title = "Sample Locations", y = "Number of Samples") 
+})
+output$unique_viruses <- renderPlot({
+  summary_data %>%
+  group_by(sample_srx) %>%
+  reframe(unique_pathogens = n()-1) %>%
+  ggplot(aes(x = unique_pathogens)) +
+  geom_histogram(fill = "salmon", binwidth = 1) +
+  scale_x_continuous(breaks = seq(0, 15, by = 1)) +
+  labs(
+    title = "Total Unique Enteric Viruses Identified per Sample",
+    x = "unique enteric viruses in sample",
+    y = "Total Samples") 
 })
 
   
