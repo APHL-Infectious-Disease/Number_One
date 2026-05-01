@@ -29,11 +29,11 @@ thematic::thematic_shiny(font = "auto")
   try(source("../dashboard/summarize_kraken_output.R", chdir = TRUE))
   
   ### Load Kraken summary file based on most recent date in file name
-  most_recent_kraken <- list.files("../results/summary/", full.names = TRUE) %>% 
+  most_recent_kraken <- list.files("../results/summary/", full.names = TRUE, pattern = "kraken_summary-") %>% 
   sort(decreasing = TRUE) %>% 
   first()
   
-  kraken_summary <- read.csv("../results/summary/kraken_summary-2026-04-28.csv")
+  kraken_summary <- read.csv(most_recent_kraken)
   
   ### Metadata from SRA data pull
   ww_metadata <- read.csv("../results/sra/sra_meta.tsv", sep = "\t")
