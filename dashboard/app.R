@@ -142,11 +142,11 @@ output$org_percent <- renderPlot({
   scale_fill_hue(c = 40) +
   scale_x_continuous(labels = label_number()) +
   theme(legend.position="none") +
-  labs(title="Percentage of Organisms in Wastewater (axis is not to 100!)", x="Percentage in sample") 
+  labs(title="Percentage of Organisms in Wastewater (axis is not to 100!)", x="Percentage in sample", y = "Organism") 
   ##bar chart for percent of organisms by scientific name (without unclassified)
 })
 output$org_locale <- renderPlot({
-  ggplot(summary_oi %>% mutate(location = ifelse(location == "", "unknown", location)), aes(x = location)) +
+  ggplot(summary_oi %>% mutate(location = ifelse(location == "" | is.na(location), "unknown", location)), aes(x = location)) +
   geom_bar(fill = "salmon") +
   labs(title = "Sample Locations", y = "Number of Samples") 
 })
@@ -158,7 +158,7 @@ output$unique_viruses <- renderPlot({
   geom_histogram(fill = "salmon", binwidth = 1) +
   scale_x_continuous(breaks = seq(0, 15, by = 1)) +
   labs(
-    title = "Total Unique Enteric Viruses Identified per Sample",
+    title = "Unique Enteric Viruses Identified per Sample",
     x = "unique enteric viruses in sample",
     y = "Total Samples") 
 })
